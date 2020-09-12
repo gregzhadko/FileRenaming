@@ -29,9 +29,8 @@ namespace FileRenaming
             {
                 var directories = ImageMetadataReader.ReadMetadata(path);
                 var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(path);
-                if (_fileRegex.IsMatch(fileNameWithoutExtension))
+                if (IsStringFitsCorrectDateFormat(fileNameWithoutExtension, out _))
                 {
-                    //WriteWarning($"{Path.GetFileName(path)}: The file already has a correct name");
                     continue;
                 }
 
@@ -40,7 +39,7 @@ namespace FileRenaming
                 {
                     continue;
                 }
-                
+
                 var destFileName = $"{Path.GetDirectoryName(path)}\\{formattedDate}{Path.GetExtension(path)}";
                 try
                 {
@@ -59,23 +58,103 @@ namespace FileRenaming
             unchangedFiles.ForEach(f => Console.WriteLine($"{f.fileName}: {f.message}"));
         }
 
+        public static bool IsStringFitsCorrectDateFormat(string fileName, out string message, char separator = '-')
+        {
+            var dateTime = ToDateTime(fileName, separator);
+            if (dateTime == null)
+            {
+                message = "Can't convert to date time";
+                return false;
+            }
+
+            if (dateTime > DateTime.Now)
+            {
+                message = "Date is in the future";
+                return false;
+            }
+
+            if (dateTime < new DateTime(1990, 1, 1))
+            {
+                message = "The date is too old.";
+                return false;
+            }
+
+            message = "";
+            return true;
+        }
+
+        private static DateTime? ToDateTime(string fileName, char separator)
+        {
+            var dateAndTime = fileName.Split(' ');
+            if (dateAndTime.Length != 2)
+            {
+                return null;
+            }
+
+            var date = dateAndTime[0].Split(separator);
+            if (date.Length != 3)
+            {
+                return null;
+            }
+
+            var dateInts = new int[3];
+            for (var i = 0; i < date.Length; i++)
+            {
+                if (!int.TryParse(date[i], out var result))
+                {
+                    return null;
+                }
+
+                dateInts[i] = result;
+            }
+
+            var time = dateAndTime[1].Split(separator);
+            if (time.Length != 3)
+            {
+                return null;
+            }
+
+            var timeInts = new int[3];
+            for (var i = 0; i < time.Length; i++)
+            {
+                if (!int.TryParse(time[i], out var result))
+                {
+                    return null;
+                }
+
+                timeInts[i] = result;
+            }
+
+            try
+            {
+                var dateTime = new DateTime(dateInts[0], dateInts[1], dateInts[2], timeInts[0], timeInts[1], timeInts[2]);
+                return dateTime;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return null;
+            }
+        }
+
         private string? GetFormattedDate(IReadOnlyList<MetadataExtractor.Directory> directories, string fileName)
         {
             var extension = Path.GetExtension(fileName);
-            if (extension == ".mp4")
+            if (string.Equals(extension, ".mp4", StringComparison.OrdinalIgnoreCase))
             {
                 WriteWarning($"{fileName}: We do nothing with video for now");
                 return null;
             }
 
-            if (extension != ".jpg" && extension != ".jpeg" && extension != ".png")
+            if (!string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase) 
+                && !string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase) 
+                && !string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase))
             {
                 WriteWarning($"We doesn't support this extension {fileName}");
                 return null;
             }
 
             var dateTaken = GetDateTaken(directories);
-            
+
             if (string.IsNullOrWhiteSpace(dateTaken))
             {
                 WriteError($"{fileName}: The file doesn't contain information about date taken");
@@ -83,7 +162,7 @@ namespace FileRenaming
             }
 
             var formattedDate = dateTaken.Replace(':', '-');
-            
+
             return formattedDate;
         }
 
@@ -102,7 +181,7 @@ namespace FileRenaming
                 WriteError($"Directory {directory.Name} doesn't contain 'Date/Time Original' tag");
                 return null;
             }
-            
+
             return directories[3].Tags[15].Description;
         }
 
@@ -126,20 +205,22 @@ namespace FileRenaming
             };
         }
 
-        private static void WriteError(string error)
+        private static void WriteInColor(string error, ConsoleColor color)
         {
             var temp = Console.ForegroundColor;
-            Console.ForegroundColor = ConsoleColor.DarkRed;
+            Console.ForegroundColor = color;
             Console.WriteLine(error);
             Console.ForegroundColor = temp;
         }
 
+        private static void WriteError(string error)
+        {
+            WriteInColor(error, ConsoleColor.DarkRed);
+        }
+
         private static void WriteWarning(string error)
         {
-            var temp = Console.ForegroundColor;
-            Console.ForegroundColor = ConsoleColor.DarkYellow;
-            Console.WriteLine(error);
-            Console.ForegroundColor = temp;
+            WriteInColor(error, ConsoleColor.DarkYellow);
         }
     }
 }
