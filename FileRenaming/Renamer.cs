@@ -37,6 +37,13 @@ namespace FileRenaming
                 var formattedDate = GetFormattedDate(directories, Path.GetFileName(path));
                 if (formattedDate == null)
                 {
+                    WriteError($"File {fileNameWithoutExtension} doesn't contain correct information about date in its tags");
+                    continue;
+                }
+
+                if (!IsStringFitsCorrectDateFormat(formattedDate, out var message))
+                {
+                    WriteError($"File {fileNameWithoutExtension} contains the wrong information in date taken tag");
                     continue;
                 }
 
@@ -154,16 +161,13 @@ namespace FileRenaming
             }
 
             var dateTaken = GetDateTaken(directories);
-
             if (string.IsNullOrWhiteSpace(dateTaken))
             {
                 WriteError($"{fileName}: The file doesn't contain information about date taken");
                 return null;
             }
 
-            var formattedDate = dateTaken.Replace(':', '-');
-
-            return formattedDate;
+            return dateTaken.Replace(':', '-');
         }
 
         private string? GetDateTaken(IReadOnlyList<MetadataExtractor.Directory> directories)
@@ -182,7 +186,7 @@ namespace FileRenaming
                 return null;
             }
 
-            return directories[3].Tags[15].Description;
+            return dateTaken.Description;
         }
 
         private string ShortMonthStingToIntStringRu(string month)
