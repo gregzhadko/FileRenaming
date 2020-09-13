@@ -48,15 +48,15 @@ namespace FileRenaming
                 }
 
                 var destFileName = $"{Path.GetDirectoryName(path)}\\{formattedDate}{Path.GetExtension(path)}";
-                try
-                {
-                    File.Move(Path.GetFullPath(path), destFileName);
-                    Console.WriteLine($"{fileNameWithoutExtension}: moved to {destFileName}");
-                }
-                catch (IOException exception) when (exception.Message == "Cannot create a file when that file already exists.")
+
+                if (File.Exists(destFileName))
                 {
                     WriteError($"{fileNameWithoutExtension}: The file with the name {Path.GetFileName(destFileName)} already exists");
+                    continue;
                 }
+
+                File.Move(Path.GetFullPath(path), destFileName);
+                Console.WriteLine($"{fileNameWithoutExtension}: moved to {destFileName}");
 
                 count++;
             }
@@ -152,8 +152,8 @@ namespace FileRenaming
                 return null;
             }
 
-            if (!string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase) 
-                && !string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase) 
+            if (!string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase)
                 && !string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase))
             {
                 WriteWarning($"We doesn't support this extension {fileName}");
@@ -179,14 +179,20 @@ namespace FileRenaming
                 return null;
             }
 
-            var dateTaken = directory.Tags.FirstOrDefault(t => t.Name == "Date/Time Original");
-            if (dateTaken == null)
+            var date = directory.Tags.FirstOrDefault(t => t.Name == "Date/Time Digitized");
+            if (date != null)
             {
-                WriteError($"Directory {directory.Name} doesn't contain 'Date/Time Original' tag");
-                return null;
+                return date.Description;
             }
 
-            return dateTaken.Description;
+            date = directory.Tags.FirstOrDefault(t => t.Name == "Date/Time Original");
+            if (date != null)
+            {
+                return date.Description;
+            }
+
+            WriteError($"Directory {directory.Name} doesn't contain 'Date/Time Original' tag");
+            return null;
         }
 
         private string ShortMonthStingToIntStringRu(string month)
