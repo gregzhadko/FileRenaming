@@ -34,7 +34,7 @@ namespace FileRenaming
                     continue;
                 }
 
-                var formattedDate = GetFormattedDate(directories, Path.GetFileName(path));
+                var formattedDate = GetFormattedDate(directories, path);
                 if (formattedDate == null)
                 {
                     WriteError($"File {fileNameWithoutExtension} doesn't contain correct information about date in its tags");
@@ -47,22 +47,33 @@ namespace FileRenaming
                     continue;
                 }
 
-                var destFileName = $"{Path.GetDirectoryName(path)}\\{formattedDate}{Path.GetExtension(path)}";
-
-                if (File.Exists(destFileName))
-                {
-                    WriteError($"{fileNameWithoutExtension}: The file with the name {Path.GetFileName(destFileName)} already exists");
-                    continue;
-                }
-
-                File.Move(Path.GetFullPath(path), destFileName);
-                Console.WriteLine($"{fileNameWithoutExtension}: moved to {destFileName}");
-
-                count++;
+                count += Rename(path, formattedDate);
             }
 
             Console.WriteLine($"Total number of files in folder: {paths.Count}. Converted: {count}");
             unchangedFiles.ForEach(f => Console.WriteLine($"{f.fileName}: {f.message}"));
+        }
+
+        private static int Rename(string originalFilePath, string formattedDate)
+        {
+            var destFileName = $"{Path.GetDirectoryName(originalFilePath)}\\{formattedDate}";
+
+            if (originalFilePath.Contains("_xvid", StringComparison.InvariantCultureIgnoreCase))
+            {
+                destFileName += "_xvid";
+            }
+
+            destFileName += $"{Path.GetExtension(originalFilePath)}";
+
+            if (File.Exists(destFileName))
+            {
+                WriteError($"{Path.GetFileName(originalFilePath)}: The file with the name {Path.GetFileName(destFileName)} already exists");
+                return 0;
+            }
+
+            File.Move(Path.GetFullPath(originalFilePath), destFileName);
+            Console.WriteLine($"{Path.GetFileName(originalFilePath)}: moved to {destFileName}");
+            return 1;
         }
 
         public static bool IsStringFitsCorrectDateFormat(string fileName, out string message, char separator = '-')
@@ -143,34 +154,70 @@ namespace FileRenaming
             }
         }
 
-        private string? GetFormattedDate(IReadOnlyList<MetadataExtractor.Directory> directories, string fileName)
+        private string? GetFormattedDate(IReadOnlyList<MetadataExtractor.Directory> directories, string pathToFile)
         {
+            var fileName = Path.GetFileName(pathToFile);
             var extension = Path.GetExtension(fileName);
             if (string.Equals(extension, ".mp4", StringComparison.OrdinalIgnoreCase))
             {
-                WriteWarning($"{fileName}: We do nothing with video for now");
+                WriteWarning($"{fileName}: We do nothing with mp4 for now");
                 return null;
             }
 
-            if (!string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase))
+            if (extension.InListCaseIgnore(new[] { ".jpg", ".jpeg", ".png" }))
             {
-                WriteWarning($"We doesn't support this extension {fileName}");
-                return null;
+                var dateTaken = GetImageDateTaken(directories);
+                if (string.IsNullOrWhiteSpace(dateTaken))
+                {
+                    WriteError($"{fileName}: The file doesn't contain information about date taken");
+                    return null;
+                }
+
+                return dateTaken.Replace(':', '-');
             }
 
-            var dateTaken = GetDateTaken(directories);
-            if (string.IsNullOrWhiteSpace(dateTaken))
+            if (extension.InListCaseIgnore(new[] { ".avi" }))
             {
-                WriteError($"{fileName}: The file doesn't contain information about date taken");
-                return null;
+                var dateCreated = GetXvidDateCreated(directories, pathToFile);
+                if (dateCreated == null)
+                {
+                    return null;
+                }
+
+                var d = dateCreated.Value;
+                return $"{d.Year}-{d.Month}-{d.Day} {d.Hour}-{d.Minute}-{d.Second}";
             }
 
-            return dateTaken.Replace(':', '-');
+            WriteWarning($"We doesn't support this extension {fileName}");
+            return null;
         }
 
-        private string? GetDateTaken(IReadOnlyList<MetadataExtractor.Directory> directories)
+        private static DateTime? GetXvidDateCreated(IEnumerable<MetadataExtractor.Directory> directories, string pathToFile)
+        {
+            var directory = directories.FirstOrDefault(d => d.Name == "AVI");
+            if (directory == null)
+            {
+                WriteError($"File doesn't contain 'AVI' directory");
+                return null;
+            }
+
+            var code = directory.Tags.FirstOrDefault(t => t.Name == "Video Codec");
+            if (code == null || code.Description != "XVID")
+            {
+                WriteError("The file was coded not with XVID code. You should use another case");
+                return null;
+            }
+
+            return File.GetCreationTime(pathToFile);
+        }
+
+        private static bool IsAnyOfExtension(string extension)
+        {
+            return string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase) || string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private string? GetImageDateTaken(IReadOnlyList<MetadataExtractor.Directory> directories)
         {
             var directory = directories.FirstOrDefault(d => d.Name == "Exif SubIFD");
             if (directory == null)
