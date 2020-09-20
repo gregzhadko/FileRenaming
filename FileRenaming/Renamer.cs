@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
 using MetadataExtractor;
 using Directory = System.IO.Directory;
 
@@ -10,10 +9,7 @@ namespace FileRenaming
 {
     public class Renamer
     {
-        private readonly Regex _fileRegex = new Regex(@"\d\d\d\d-\d\d-\d\d \d\d-\d\d-\d\d");
-        private readonly Regex _dateTakenRegex = new Regex(@"\d\d\d\d-\d\d-\d\d \d\d-\d\d-\d\d");
-
-        public void Run()
+        internal void Run()
         {
             Console.WriteLine("Please Enter the path:");
             var directoryPath = Console.ReadLine();
@@ -41,7 +37,7 @@ namespace FileRenaming
                     continue;
                 }
 
-                if (!IsStringFitsCorrectDateFormat(formattedDate, out var message))
+                if (!IsStringFitsCorrectDateFormat(formattedDate, out _))
                 {
                     WriteError($"File {fileNameWithoutExtension} contains the wrong information in date taken tag");
                     continue;
@@ -72,7 +68,7 @@ namespace FileRenaming
             }
 
             File.Move(Path.GetFullPath(originalFilePath), destFileName);
-            Console.WriteLine($"{Path.GetFileName(originalFilePath)}: moved to {destFileName}");
+            Console.WriteLine($"{Path.GetFileName(originalFilePath)}: moved to {Path.GetFileName(destFileName)}");
             return 1;
         }
 
@@ -154,7 +150,7 @@ namespace FileRenaming
             }
         }
 
-        private string? GetFormattedDate(IReadOnlyList<MetadataExtractor.Directory> directories, string pathToFile)
+        private static string? GetFormattedDate(IReadOnlyList<MetadataExtractor.Directory> directories, string pathToFile)
         {
             var fileName = Path.GetFileName(pathToFile);
             var extension = Path.GetExtension(fileName);
@@ -185,7 +181,7 @@ namespace FileRenaming
                 }
 
                 var d = dateCreated.Value;
-                return $"{d.Year}-{d.Month}-{d.Day} {d.Hour}-{d.Minute}-{d.Second}";
+                return $"{d.Year}-{d.Month:00}-{d.Day:00} {d.Hour:00}-{d.Minute:00}-{d.Second:00}";
             }
 
             WriteWarning($"We doesn't support this extension {fileName}");
@@ -197,7 +193,7 @@ namespace FileRenaming
             var directory = directories.FirstOrDefault(d => d.Name == "AVI");
             if (directory == null)
             {
-                WriteError($"File doesn't contain 'AVI' directory");
+                WriteError("File doesn't contain 'AVI' directory");
                 return null;
             }
 
@@ -211,22 +207,16 @@ namespace FileRenaming
             return File.GetCreationTime(pathToFile);
         }
 
-        private static bool IsAnyOfExtension(string extension)
-        {
-            return string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase) || string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private string? GetImageDateTaken(IReadOnlyList<MetadataExtractor.Directory> directories)
+        private static string? GetImageDateTaken(IReadOnlyList<MetadataExtractor.Directory> directories)
         {
             var directory = directories.FirstOrDefault(d => d.Name == "Exif SubIFD");
             if (directory == null)
             {
-                WriteError($"File doesn't contain 'Exif SubIFD' directory");
+                WriteError("File doesn't contain 'Exif SubIFD' directory");
                 return null;
             }
 
-            var date = directory.Tags.FirstOrDefault(t => t.Name == "Date/Time Digitized");
+            var date = directory.Tags.FirstOrDefault(t => t.Name == "Date/Time Original");
             if (date != null)
             {
                 return date.Description;
