@@ -59,17 +59,58 @@ namespace FileRenaming
                 destFileName += "_xvid";
             }
 
-            destFileName += $"{Path.GetExtension(originalFilePath)}";
+            var areLastSymbolsInt = Int32.TryParse(destFileName.Substring(destFileName.Length - 2), out var lastNumber);
+            var destFileNameWithExt = $"{destFileName}{Path.GetExtension(originalFilePath)}";
 
-            if (File.Exists(destFileName))
+            if (!File.Exists(destFileNameWithExt))
             {
-                WriteError($"{Path.GetFileName(originalFilePath)}: The file with the name {Path.GetFileName(destFileName)} already exists");
+                MoveFile(originalFilePath, destFileNameWithExt);
+                return 1;
+            }
+
+            if (!areLastSymbolsInt)
+            {
+                WriteError($"{Path.GetFileName(originalFilePath)}: The file with the name {Path.GetFileName(destFileNameWithExt)} already exists");
                 return 0;
             }
 
-            File.Move(Path.GetFullPath(originalFilePath), destFileName);
-            Console.WriteLine($"{Path.GetFileName(originalFilePath)}: moved to {Path.GetFileName(destFileName)}");
-            return 1;
+            //Try to rename
+
+            if (TryToRename(destFileName, originalFilePath, (lastNumber - 1)) || TryToRename(destFileName, originalFilePath, (lastNumber + 1)) ||
+                TryToRename(destFileName, originalFilePath, (lastNumber - 2)) || TryToRename(destFileName, originalFilePath, (lastNumber + 2)))
+            {
+                return 1;
+            }
+
+            WriteError($"{Path.GetFileName(originalFilePath)}: The file with the name {Path.GetFileName(destFileNameWithExt)} already exists");
+            return 0;
+        }
+
+        public static bool TryToRename(string destFileName, string originalFilePath, int lastNumber)
+        {
+            if (lastNumber < 0)
+            {
+                return false;
+            }
+
+            var newLastSymbol = lastNumber.ToString("00");
+            var originalName = destFileName;
+            destFileName = destFileName.ReplaceAt(destFileName.Length - 2, 2, newLastSymbol);
+            var destFileNameWithExt = $"{destFileName}{Path.GetExtension(originalFilePath)}";
+            if (File.Exists(destFileNameWithExt))
+            {
+                return false;
+            }
+
+            WriteWarning($"File will be renamed to {destFileName} instead of {originalName}");
+            MoveFile(originalFilePath, destFileNameWithExt);
+            return true;
+        }
+
+        private static void MoveFile(string originalFilePath, string destFileNameWithExt)
+        {
+            File.Move(Path.GetFullPath(originalFilePath), destFileNameWithExt);
+            Console.WriteLine($"{Path.GetFileName(originalFilePath)}: moved to {Path.GetFileName(destFileNameWithExt)}");
         }
 
         public static bool IsStringFitsCorrectDateFormat(string fileName, out string message, char separator = '-')
@@ -153,6 +194,7 @@ namespace FileRenaming
         private static string? GetFormattedDate(IReadOnlyList<MetadataExtractor.Directory> directories, string pathToFile)
         {
             var fileName = Path.GetFileName(pathToFile);
+
             var extension = Path.GetExtension(fileName);
             if (string.Equals(extension, ".mp4", StringComparison.OrdinalIgnoreCase))
             {
@@ -160,7 +202,11 @@ namespace FileRenaming
                 return null;
             }
 
-            if (extension.InListCaseIgnore(new[] { ".jpg", ".jpeg", ".png" }))
+            if (extension.InListCaseIgnore(new[]
+            {
+                ".jpg", ".jpeg", ".png"
+            }))
+
             {
                 var dateTaken = GetImageDateTaken(directories);
                 if (string.IsNullOrWhiteSpace(dateTaken))
@@ -172,42 +218,21 @@ namespace FileRenaming
                 return dateTaken.Replace(':', '-');
             }
 
-            if (extension.InListCaseIgnore(new[] { ".avi" }))
+            if (extension.InListCaseIgnore(new[]
             {
-                var dateCreated = GetXvidDateCreated(directories, pathToFile);
-                if (dateCreated == null)
-                {
-                    return null;
-                }
+                ".avi"
+            }))
 
-                var d = dateCreated.Value;
-                return $"{d.Year}-{d.Month:00}-{d.Day:00} {d.Hour:00}-{d.Minute:00}-{d.Second:00}";
+            {
+                var date = File.GetCreationTime(pathToFile);
+                return $"{date.Year}-{date.Month:00}-{date.Day:00} {date.Hour:00}-{date.Minute:00}-{date.Second:00}";
             }
 
             WriteWarning($"We doesn't support this extension {fileName}");
             return null;
         }
 
-        private static DateTime? GetXvidDateCreated(IEnumerable<MetadataExtractor.Directory> directories, string pathToFile)
-        {
-            var directory = directories.FirstOrDefault(d => d.Name == "AVI");
-            if (directory == null)
-            {
-                WriteError("File doesn't contain 'AVI' directory");
-                return null;
-            }
-
-            var code = directory.Tags.FirstOrDefault(t => t.Name == "Video Codec");
-            if (code == null || code.Description != "XVID")
-            {
-                WriteError("The file was coded not with XVID code. You should use another case");
-                return null;
-            }
-
-            return File.GetCreationTime(pathToFile);
-        }
-
-        private static string? GetImageDateTaken(IReadOnlyList<MetadataExtractor.Directory> directories)
+        private static string? GetImageDateTaken(IEnumerable<MetadataExtractor.Directory> directories)
         {
             var directory = directories.FirstOrDefault(d => d.Name == "Exif SubIFD");
             if (directory == null)
@@ -265,9 +290,9 @@ namespace FileRenaming
             WriteInColor(error, ConsoleColor.DarkRed);
         }
 
-        private static void WriteWarning(string error)
+        private static void WriteWarning(string warning)
         {
-            WriteInColor(error, ConsoleColor.DarkYellow);
+            WriteInColor(warning, ConsoleColor.DarkYellow);
         }
     }
 }
