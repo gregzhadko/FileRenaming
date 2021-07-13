@@ -13,7 +13,7 @@ namespace FileRenaming
         {
             Console.WriteLine("Please Enter the path:");
             var directoryPath = Console.ReadLine();
-            if (!Directory.Exists(directoryPath))
+            if (string.IsNullOrWhiteSpace(directoryPath) || !Directory.Exists(directoryPath))
             {
                 return;
             }
@@ -21,14 +21,24 @@ namespace FileRenaming
             var paths = Directory.GetFiles(directoryPath).ToList();
             var unchangedFiles = new List<(string fileName, string message)>();
             var count = 0;
-            foreach (var path in paths)
+            foreach (var path in paths.Where(path => Path.GetExtension(path) != ".ini"))
             {
-                var directories = ImageMetadataReader.ReadMetadata(path);
-                var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(path);
-                if (IsStringFitsCorrectDateFormat(fileNameWithoutExtension, out _))
+                IReadOnlyList<MetadataExtractor.Directory>? directories;
+                try
                 {
-                    continue;
+                    directories = ImageMetadataReader.ReadMetadata(path);
                 }
+                catch (ImageProcessingException)
+                {
+                    WriteWarning("Couldn't find file metadata");
+                    directories = null;
+                }
+
+                var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(path);
+                // if (IsStringFitsCorrectDateFormat(fileNameWithoutExtension, out _))
+                // {
+                //     continue;
+                // }
 
                 var formattedDate = GetFormattedDate(directories, path);
                 if (formattedDate == null)
@@ -86,7 +96,7 @@ namespace FileRenaming
             return 0;
         }
 
-        public static bool TryToRename(string destFileName, string originalFilePath, int lastNumber)
+        private static bool TryToRename(string destFileName, string originalFilePath, int lastNumber)
         {
             if (lastNumber < 0)
             {
@@ -191,22 +201,18 @@ namespace FileRenaming
             }
         }
 
-        private static string? GetFormattedDate(IReadOnlyList<MetadataExtractor.Directory> directories, string pathToFile)
+        private static string? GetFormattedDate(IReadOnlyList<MetadataExtractor.Directory>? directories, string pathToFile)
         {
             var fileName = Path.GetFileName(pathToFile);
 
             var extension = Path.GetExtension(fileName);
-            if (string.Equals(extension, ".mp4", StringComparison.OrdinalIgnoreCase))
-            {
-                WriteWarning($"{fileName}: We do nothing with mp4 for now");
-                return null;
-            }
+            // if (string.Equals(extension, ".mp4", StringComparison.OrdinalIgnoreCase))
+            // {
+            //     WriteWarning($"{fileName}: We do nothing with mp4 for now");
+            //     return null;
+            // }
 
-            if (extension.InListCaseIgnore(new[]
-            {
-                ".jpg", ".jpeg", ".png"
-            }))
-
+            if (directories != null && extension.InListCaseIgnore(new[] { ".jpg", ".jpeg", ".png", ".heic" }))
             {
                 var dateTaken = GetImageDateTaken(directories);
                 if (string.IsNullOrWhiteSpace(dateTaken))
@@ -218,11 +224,7 @@ namespace FileRenaming
                 return dateTaken.Replace(':', '-');
             }
 
-            if (extension.InListCaseIgnore(new[]
-            {
-                ".avi"
-            }))
-
+            if (extension.InListCaseIgnore(new[] { ".avi", ".mov", ".mp4", ".MPG" }))
             {
                 var date = File.GetCreationTime(pathToFile);
                 return $"{date.Year}-{date.Month:00}-{date.Day:00} {date.Hour:00}-{date.Minute:00}-{date.Second:00}";
@@ -294,5 +296,7 @@ namespace FileRenaming
         {
             WriteInColor(warning, ConsoleColor.DarkYellow);
         }
+
+        
     }
 }
